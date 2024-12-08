@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Symmetric Encryption Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        #output {
+            white-space: pre-wrap;
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: #f8f8f8;
+            margin-right: 5px;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Symmetric Encryption Demo</h1>
+        <p>This demo shows hierarchical key management with Master Keys, KEKs, and DEKs</p>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('local')">Local Key Management</div>
+            <div class="tab" onclick="switchTab('aws')">AWS KMS</div>
+        </div>
+
+        <div id="local-content" class="tab-content active">
+            <div class="section">
+                <h3>Create Encrypted Session</h3>
+                <textarea id="localUserData" placeholder="Enter data to encrypt" rows="4"></textarea>
+                <button onclick="createSession()">Encrypt and Store</button>
+            </div>
+
+            <div class="section">
+                <h3>Session Operations</h3>
+                <button onclick="getSession()">Get Decrypted Session Data</button>
+                <button onclick="rotateKek()">Rotate KEK</button>
+            </div>
+        </div>
+
+        <div id="aws-content" class="tab-content">
+            <div class="section">
+                <h3>AWS KMS Encryption</h3>
+                <textarea id="awsUserData" placeholder="Enter data to encrypt using AWS KMS" rows="4"></textarea>
+                <button onclick="awsEncrypt()">Encrypt with AWS KMS</button>
+            </div>
+
+            <div class="section">
+                <h3>AWS KMS Decryption</h3>
+                <textarea id="awsEncryptedData" placeholder="Encrypted data" rows="2"></textarea>
+                <textarea id="awsEncryptedKey" placeholder="Encrypted key (base64)" rows="2"></textarea>
+                <button onclick="awsDecrypt()">Decrypt with AWS KMS</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Output</h3>
+            <div id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        function appendOutput(text) {
+            const output = document.getElementById('output');
+            output.textContent = new Date().toLocaleTimeString() + ': ' + text + '\n' + output.textContent;
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            document.querySelector(`.tab[onclick*="${tabName}"]`).classList.add('active');
+            document.getElementById(`${tabName}-content`).classList.add('active');
+        }
+
+        async function createSession() {
+            const userData = document.getElementById('localUserData').value;
+            try {
+                const response = await fetch('/encryption/create-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ userData }),
+                });
+                const data = await response.json();
+                if (data.error) {
+                    appendOutput('Error: ' + data.error);
+                } else {
+                    appendOutput(data.message + ' (KEK ID: ' + data.kekId + ')');
+                }
+            } catch (error) {
+                appendOutput('Error: ' + error);
+            }
+        }
+
+        async function getSession() {
+            try {
+                const response = await fetch('/encryption/get-session');
+                const data = await response.json();
+                if (data.error) {
+                    appendOutput('Error: ' + data.error);
+                } else {
+                    appendOutput('Decrypted data: ' + data.data);
+                }
+            } catch (error) {
+                appendOutput('Error: ' + error);
+            }
+        }
+
+        async function rotateKek() {
+            try {
+                const response = await fetch('/encryption/rotate-kek', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.error) {
+                    appendOutput('Error: ' + data.error);
+                } else {
+                    appendOutput('KEK rotated: ' + data.message + 
+                        ' (Old KEK ID: ' + data.oldKekId + 
+                        ', New KEK ID: ' + data.newKekId + ')');
+                }
+            } catch (error) {
+                appendOutput('Error: ' + error);
+            }
+        }
+
+        async function awsEncrypt() {
+            const data = document.getElementById('awsUserData').value;
+            try {
+                const response = await fetch('/encryption/aws/encrypt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ data }),
+                });
+                const result = await response.json();
+                if (result.error) {
+                    appendOutput('Error: ' + result.error);
+                } else {
+                    document.getElementById('awsEncryptedData').value = result.encryptedData;
+                    document.getElementById('awsEncryptedKey').value = result.encryptedDataKey;
+                    appendOutput('Data encrypted successfully (Key ID: ' + result.keyId + ')');
+                }
+            } catch (error) {
+                appendOutput('Error: ' + error);
+            }
+        }
+
+        async function awsDecrypt() {
+            const encryptedData = document.getElementById('awsEncryptedData').value;
+            const encryptedDataKey = document.getElementById('awsEncryptedKey').value;
+            try {
+                const response = await fetch('/encryption/aws/decrypt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ encryptedData, encryptedDataKey }),
+                });
+                const result = await response.json();
+                if (result.error) {
+                    appendOutput('Error: ' + result.error);
+                } else {
+                    appendOutput('Decrypted data: ' + result.decryptedData);
+                }
+            } catch (error) {
+                appendOutput('Error: ' + error);
+            }
+        }
+    </script>
+</body>
+</html>
